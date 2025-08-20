@@ -1,3 +1,5 @@
 Flask==3.1.1
 sqlparse==0.5.3
 python-dotenv==1.1.1
+flask_sqlalchemy==3.1.1
+pytest==8.4.1

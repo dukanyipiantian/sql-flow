@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL血缘分析工具</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.2.96/css/materialdesignicons.min.css">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #4361ee;
+            --secondary-color: #3f37c9;
+            --accent-color: #4895ef;
+            --light-bg: #f8f9fa;
+            --dark-bg: #212529;
+            --success-color: #4cc9f0;
+            --warning-color: #f8961e;
+            --error-color: #f94144;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background-color: #f5f7fb;
+            color: #2b2d42;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .app-container {
+            display: flex;
+            height: 100vh;
+            max-width: 100%;
+        }
+
+        .left-panel {
+            width: 30%;
+            min-width: 400px;
+            background: white;
+            border-right: 1px solid #e9ecef;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .right-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            background: white;
+            position: relative;
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            padding: 15px 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            z-index: 10;
+        }
+
+        .sql-editor-container {
+            padding: 15px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        #sql-input {
+            width: 100%;
+            min-height: 120px;
+            padding: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            resize: none;
+        }
+
+        .btn-parse {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-weight: 500;
+        }
+
+        .btn-parse:hover {
+            background-color: var(--secondary-color);
+        }
+
+        .metadata-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .panel-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--primary-color);
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .result-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .result-item {
+            padding: 8px 10px;
+            margin-bottom: 6px;
+            background-color: var(--light-bg);
+            border-radius: 4px;
+            border-left: 3px solid var(--accent-color);
+            font-size: 14px;
+        }
+
+        .visualization-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #lineage-graph {
+            width: 100%;
+            height: 100%;
+            background-color: #fafafa;
+        }
+
+        .table-node {
+            cursor: move;
+        }
+
+        .table-node.dragging {
+            cursor: grabbing;
+        }
+
+        .table-rect {
+            fill: white;
+            stroke: #4361ee;
+            stroke-width: 2px;
+            rx: 6px;
+            ry: 6px;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+        }
+
+        .table-header {
+            fill: #4361ee;
+            rx: 6px 6px 0 0;
+            ry: 6px 6px 0 0;
+        }
+
+        .table-name {
+            font-weight: 600;
+            fill: white;
+            font-size: 14px;
+            text-anchor: middle;
+            dominant-baseline: middle;
+        }
+
+        .column-row {
+            fill: white;
+            stroke: #e9ecef;
+            stroke-width: 0.5px;
+        }
+
+        .column-name {
+            font-size: 12px;
+            fill: #495057;
+            dominant-baseline: middle;
+        }
+
+        .link-line {
+            stroke: #a0cfff;
+            stroke-width: 2;
+            fill: none;
+        }
+
+        .link-arrow {
+            fill: #a0cfff;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            display: none;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background-color: #fee2e2;
+            color: var(--error-color);
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            display: none;
+            font-size: 14px;
+        }
+
+        .sample-queries {
+            margin-top: 10px;
+        }
+
+        .sample-query {
+            display: inline-block;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            padding: 4px 8px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .sample-query:hover {
+            background-color: #dee2e6;
+        }
+
+        .controls {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 100;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 8px;
+        }
+
+        .control-btn {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 6px 10px;
+            margin: 0 2px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .control-btn:hover {
+            background: #e9ecef;
+        }
+
+        .no-data-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #6c757d;
+            font-size: 16px;
+        }
+
+        @media (max-width: 1200px) {
+            .app-container {
+                flex-direction: column;
+            }
+
+            .left-panel, .right-panel {
+                width: 100%;
+                min-width: auto;
+            }
+
+            .left-panel {
+                border-right: none;
+                border-bottom: 1px solid #e9ecef;
+                height: 50%;
+            }
+
+            .right-panel {
+                height: 50%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- 左侧面板 - SQL输入和元数据 -->
+        <div class="left-panel">
+            <div class="header">
+                <h2><i class="mdi mdi-database"></i> SQL解析结果</h2>
+            </div>
+
+            <div class="sql-editor-container">
+                <textarea id="sql-input" placeholder="请输入SQL语句，例如：
+SELECT u.id, u.name, o.order_date, p.product_name
+FROM users u
+JOIN orders o ON u.id = o.user_id
+JOIN products p ON o.product_id = p.id
+WHERE u.status = 'active'"></textarea>
+
+                <button id="parse-btn" class="btn-parse">
+                    <i class="mdi mdi-play"></i> 解析SQL
+                </button>
+
+                <div class="sample-queries">
+                    <small class="text-muted">示例查询：</small>
+                    <div class="sample-query" data-sql="SELECT * FROM customers">简单查询</div>
+                    <div class="sample-query" data-sql="SELECT u.id, o.order_date FROM users u JOIN orders o ON u.id = o.user_id">JOIN查询</div>
+                </div>
+
+                <div class="error-message" id="error-message"></div>
+            </div>
+
+            <div class="metadata-container">
+                <h3 class="panel-title"><i class="mdi mdi-table"></i> 表列表</h3>
+                <ul class="result-list" id="tables-list">
+                    <li class="result-item">输入SQL后点击解析</li>
+                </ul>
+
+                <h3 class="panel-title mt-4"><i class="mdi mdi-grid"></i> 字段列表</h3>
+                <ul class="result-list" id="columns-list">
+                    <li class="result-item">解析后将显示字段</li>
+                </ul>
+
+                <h3 class="panel-title mt-4"><i class="mdi mdi-vector-link"></i> JOIN关系</h3>
+                <ul class="result-list" id="joins-list">
+                    <li class="result-item">JOIN关系将显示在这里</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- 右侧面板 - 血缘图 -->
+        <div class="right-panel">
+            <div class="header">
+                <h2><i class="mdi mdi-sitemap"></i> 血缘关系图</h2>
+            </div>
+
+            <div class="visualization-container">
+                <svg id="lineage-graph"></svg>
+                <div class="controls">
+                    <button class="control-btn" id="zoom-in"><i class="mdi mdi-magnify-plus"></i></button>
+                    <button class="control-btn" id="zoom-out"><i class="mdi mdi-magnify-minus"></i></button>
+                    <button class="control-btn" id="reset-view"><i class="mdi mdi-fullscreen"></i></button>
+                </div>
+                <div class="no-data-text" id="no-data-text">请输入SQL并点击解析按钮</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="spinner"></div>
+    </div>
+
+    <script>
+        // 全局变量
+        const sqlInput = document.getElementById('sql-input');
+        const parseBtn = document.getElementById('parse-btn');
+        const tablesList = document.getElementById('tables-list');
+        const columnsList = document.getElementById('columns-list');
+        const joinsList = document.getElementById('joins-list');
+        const errorMsg = document.getElementById('error-message');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const noDataText = document.getElementById('no-data-text');
+        const svg = d3.select("#lineage-graph");
+        const zoomInBtn = document.getElementById('zoom-in');
+        const zoomOutBtn = document.getElementById('zoom-out');
+        const resetViewBtn = document.getElementById('reset-view');
+
+        // SVG尺寸
+        let width = 0;
+        let height = 0;
+
+        // 缩放和拖拽相关
+        let transform = d3.zoomIdentity;
+        let zoom;
+
+        // 图数据
+        let graphData = null;
+        let layoutData = null;
+        let linkElements = null;
+
+        // 初始化
+        function init() {
+            updateSVGSize();
+            window.addEventListener('resize', updateSVGSize);
+            
+            // 绑定事件
+            document.querySelectorAll('.sample-query').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    sqlInput.value = this.getAttribute('data-sql');
+                });
+            });
+
+            parseBtn.addEventListener('click', parseSQL);
+            
+            // 缩放控制
+            zoomInBtn.addEventListener('click', () => zoomAction(1.2));
+            zoomOutBtn.addEventListener('click', () => zoomAction(0.8));
+            resetViewBtn.addEventListener('click', resetView);
+            
+            // 初始化缩放行为
+            initZoom();
+        }
+
+        // 更新SVG尺寸
+        function updateSVGSize() {
+            const container = document.querySelector('.visualization-container');
+            width = container.clientWidth;
+            height = container.clientHeight;
+            svg.attr('width', width).attr('height', height);
+        }
+
+        // 初始化缩放
+        function initZoom() {
+            zoom = d3.zoom()
+                .scaleExtent([0.1, 5])
+                .on('zoom', (event) => {
+                    transform = event.transform;
+                    svg.selectAll('.graph-content').attr('transform', transform);
+                });
+
+            svg.call(zoom);
+        }
+
+        // 缩放操作
+        function zoomAction(scale) {
+            transform = transform.scale(scale);
+            svg.transition()
+                .duration(300)
+                .call(zoom.transform, transform);
+        }
+
+        // 重置视图
+        function resetView() {
+            transform = d3.zoomIdentity;
+            svg.transition()
+                .duration(300)
+                .call(zoom.transform, transform);
+        }
+
+        // 解析SQL
+        async function parseSQL() {
+            const sql = sqlInput.value.trim();
+
+            if (!sql) {
+                showError('请输入SQL语句');
+                return;
+            }
+
+            clearResults();
+
+            try {
+                showLoading();
+
+                // 模拟API调用 - 实际使用时替换为真实API
+                const data = generateMockData(sql);
+                
+                // 模拟网络延迟
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                if (data.success) {
+                    renderResults(data.data);
+                    drawLineage(data.data);
+                    hideNoDataText();
+                } else {
+                    showError(data.message || 'SQL解析失败');
+                }
+
+            } catch (err) {
+                console.error('请求失败:', err);
+                showError('请求失败: ' + err.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 生成模拟数据
+        function generateMockData(sql) {
+            return {
+                success: true,
+                data: {
+                    tables: ['users', 'orders', 'products', 'result'],
+                    columns: [
+                        'users.id', 'users.name', 'users.status',
+                        'orders.id', 'orders.user_id', 'orders.product_id', 'orders.order_date',
+                        'products.id', 'products.product_name',
+                        'result.id', 'result.name', 'result.order_date', 'result.product_name'
+                    ],
+                    joins: [
+                        {
+                            left_table: 'users',
+                            left_column: 'id',
+                            right_table: 'orders',
+                            right_column: 'user_id'
+                        },
+                        {
+                            left_table: 'orders',
+                            left_column: 'product_id',
+                            right_table: 'products',
+                            right_column: 'id'
+                        }
+                    ],
+                    graph: {
+                        nodes: [
+                            { id: 'users', type: 'source', name: 'users', columns: ['id', 'name', 'status'] },
+                            { id: 'orders', type: 'source', name: 'orders', columns: ['id', 'user_id', 'product_id', 'order_date'] },
+                            { id: 'products', type: 'source', name: 'products', columns: ['id', 'product_name'] },
+                            { id: 'result', type: 'result', name: 'result', columns: ['id', 'name', 'order_date', 'product_name'] }
+                        ],
+                        links: [
+                            { source: 'users.id', target: 'result.id', type: 'select' },
+                            { source: 'users.name', target: 'result.name', type: 'select' },
+                            { source: 'orders.order_date', target: 'result.order_date', type: 'select' },
+                            { source: 'products.product_name', target: 'result.product_name', type: 'select' },
+                            { source: 'users.id', target: 'orders.user_id', type: 'join' },
+                            { source: 'orders.product_id', target: 'products.id', type: 'join' }
+                        ]
+                    }
+                }
+            };
+        }
+
+        // 清空结果
+        function clearResults() {
+            tablesList.innerHTML = '';
+            columnsList.innerHTML = '';
+            joinsList.innerHTML = '';
+            hideError();
+        }
+
+        // 渲染结果
+        function renderResults(data) {
+            if (!data) {
+                showError('解析结果为空');
+                return;
+            }
+
+            // 渲染表
+            const tables = data.tables || [];
+            tablesList.innerHTML = tables.length > 0
+                ? tables.map(table => `<li class="result-item"><i class="mdi mdi-table"></i> ${table}</li>`).join('')
+                : '<li class="result-item">未检测到表</li>';
+
+            // 渲染字段
+            const columns = data.columns || [];
+            columnsList.innerHTML = columns.length > 0
+                ? columns.map(column => {
+                    const icon = column.endsWith('.*') ? '<i class="mdi mdi-star-circle"></i>' : '<i class="mdi mdi-table-column"></i>';
+                    return `<li class="result-item">${icon} ${column}</li>`;
+                  }).join('')
+                : '<li class="result-item">未检测到字段</li>';
+
+            // 渲染JOIN关系
+            const joins = data.joins || [];
+            joinsList.innerHTML = joins.length > 0
+                ? joins.map(join =>
+                    `<li class="result-item">
+                        <i class="mdi mdi-link-variant"></i>
+                        ${join.left_table}.${join.left_column} 
+                        <i class="mdi mdi-arrow-right"></i>
+                        ${join.right_table}.${join.right_column}
+                    </li>`
+                  ).join('')
+                : '<li class="result-item">未检测到JOIN关系</li>';
+        }
+
+        // 绘制血缘图
+        function drawLineage(data) {
+            if (!data?.graph || !data.graph.nodes || !data.graph.links) {
+                console.warn('血缘图数据无效:', data);
+                return;
+            }
+
+            graphData = data;
+            
+            // 清除旧图
+            svg.selectAll("*").remove();
+            
+            // 创建主分组
+            const g = svg.append('g').attr('class', 'graph-content');
+            
+            // 创建箭头标记
+            const defs = g.append("defs");
+            
+            defs.append("marker")
+                .attr("id", "arrow")
+                .attr("viewBox", "0 -5 10 10")
+                .attr("refX", 8)
+                .attr("refY", 0)
+                .attr("markerWidth", 6)
+                .attr("markerHeight", 6)
+                .attr("orient", "auto")
+                .append("path")
+                .attr("d", "M0,-5L10,0L0,5")
+                .attr("class", "link-arrow");
+
+            // 计算布局
+            layoutData = calculateLayout(data.graph);
+            
+            // 绘制连线
+            linkElements = drawLinks(g, layoutData);
+            
+            // 绘制节点
+            drawNodes(g, layoutData, linkElements);
+        }
+
+        // 计算布局
+        function calculateLayout(graph) {
+            const layout = {
+                nodes: {},
+                links: []
+            };
+            
+            // 布局参数
+            const tableWidth = 200;
+            const tableHeaderHeight = 30;
+            const rowHeight = 25;
+            const horizontalSpacing = 300;
+            const verticalSpacing = 150;
+            
+            // 分类节点
+            const sourceNodes = graph.nodes.filter(n => n.type === 'source');
+            const resultNodes = graph.nodes.filter(n => n.type === 'result');
+            
+            // 计算起始位置 - 居中显示
+            const startX = width / 4; // 源表放在左侧1/4位置
+            const startY = (height - (sourceNodes.length * verticalSpacing)) / 2;
+            const resultX = 3 * width / 4; // 结果表放在右侧3/4位置
+            const resultY = height / 3;
+            
+            // 布局源表节点（垂直排列）
+            sourceNodes.forEach((node, i) => {
+                layout.nodes[node.id] = {
+                    ...node,
+                    x: startX,
+                    y: startY + i * verticalSpacing,
+                    width: tableWidth,
+                    height: tableHeaderHeight + (node.columns?.length || 0) * rowHeight,
+                    headerHeight: tableHeaderHeight,
+                    rowHeight: rowHeight
+                };
+            });
+            
+            // 布局结果表节点
+            resultNodes.forEach((node, i) => {
+                layout.nodes[node.id] = {
+                    ...node,
+                    x: resultX,
+                    y: resultY,
+                    width: tableWidth,
+                    height: tableHeaderHeight + (node.columns?.length || 0) * rowHeight,
+                    headerHeight: tableHeaderHeight,
+                    rowHeight: rowHeight
+                };
+            });
+            
+            // 处理未分类节点
+            graph.nodes.forEach(node => {
+                if (!layout.nodes[node.id]) {
+                    layout.nodes[node.id] = {
+                        ...node,
+                        x: startX + Object.keys(layout.nodes).length * horizontalSpacing,
+                        y: startY,
+                        width: tableWidth,
+                        height: tableHeaderHeight + (node.columns?.length || 0) * rowHeight,
+                        headerHeight: tableHeaderHeight,
+                        rowHeight: rowHeight
+                    };
+                }
+            });
+            
+            return layout;
+        }
+
+        // 绘制连线
+        function drawLinks(g, layout) {
+            const links = graphData.graph.links.filter(link => link.type === 'select');
+            const linkElements = {};
+            
+            const linkGroup = g.append('g').attr('class', 'links');
+            
+            links.forEach(link => {
+                const sourceNode = layout.nodes[link.source.split('.')[0]];
+                const targetNode = layout.nodes[link.target.split('.')[0]];
+                
+                if (!sourceNode || !targetNode) return;
+                
+                // 找到字段在表中的位置
+                const sourceColumn = link.source.split('.')[1];
+                const targetColumn = link.target.split('.')[1];
+                
+                const sourceColumnIndex = sourceNode.columns?.indexOf(sourceColumn) ?? -1;
+                const targetColumnIndex = targetNode.columns?.indexOf(targetColumn) ?? -1;
+                
+                if (sourceColumnIndex === -1 || targetColumnIndex === -1) return;
+                
+                // 计算字段中心点
+                const sourceX = sourceNode.x + sourceNode.width;
+                const sourceY = sourceNode.y + sourceNode.headerHeight + sourceColumnIndex * sourceNode.rowHeight + sourceNode.rowHeight / 2;
+                
+                const targetX = targetNode.x;
+                const targetY = targetNode.y + targetNode.headerHeight + targetColumnIndex * targetNode.rowHeight + targetNode.rowHeight / 2;
+                
+                // 绘制贝塞尔曲线
+                const linkPath = linkGroup.append('path')
+                    .attr('d', `M${sourceX},${sourceY} C${sourceX + 100},${sourceY} ${targetX - 100},${targetY} ${targetX},${targetY}`)
+                    .attr('class', 'link-line')
+                    .attr('marker-end', 'url(#arrow)')
+                    .attr('id', `link-${link.source.replace(/\./g, '-')}-${link.target.replace(/\./g, '-')}`);
+                
+                // 保存连线元素和数据
+                linkElements[`${link.source}-${link.target}`] = {
+                    element: linkPath,
+                    sourceNode: sourceNode,
+                    targetNode: targetNode,
+                    sourceColumn: sourceColumn,
+                    targetColumn: targetColumn,
+                    sourceColumnIndex: sourceColumnIndex,
+                    targetColumnIndex: targetColumnIndex
+                };
+            });
+            
+            return linkElements;
+        }
+
+        // 更新连线位置
+        function updateLinkPosition(linkKey, linkData) {
+            const sourceNode = linkData.sourceNode;
+            const targetNode = linkData.targetNode;
+            
+            // 计算字段中心点
+            const sourceX = sourceNode.x + sourceNode.width;
+            const sourceY = sourceNode.y + sourceNode.headerHeight + linkData.sourceColumnIndex * sourceNode.rowHeight + sourceNode.rowHeight / 2;
+            
+            const targetX = targetNode.x;
+            const targetY = targetNode.y + targetNode.headerHeight + linkData.targetColumnIndex * targetNode.rowHeight + targetNode.rowHeight / 2;
+            
+            // 更新连线位置
+            linkData.element.attr('d', `M${sourceX},${sourceY} C${sourceX + 100},${sourceY} ${targetX - 100},${targetY} ${targetX},${targetY}`);
+        }
+
+        // 绘制节点
+        function drawNodes(g, layout, linkElements) {
+            const nodeGroup = g.append('g').attr('class', 'nodes');
+            
+            Object.values(layout.nodes).forEach(node => {
+                const nodeGroupElement = nodeGroup.append('g')
+                    .attr('class', 'table-node')
+                    .attr('transform', `translate(${node.x},${node.y})`)
+                    .datum(node);
+                
+                // 添加拖拽行为
+                let dragSubject = null;
+                
+                const drag = d3.drag()
+                    .on('start', function(event, d) {
+                        d3.select(this).classed('dragging', true);
+                        dragSubject = {
+                            x: d.x,
+                            y: d.y
+                        };
+                    })
+                    .on('drag', function(event, d) {
+                        // 更新节点位置
+                        d.x = dragSubject.x + event.x - event.subject.x;
+                        d.y = dragSubject.y + event.y - event.subject.y;
+                        d3.select(this).attr('transform', `translate(${d.x},${d.y})`);
+                        
+                        // 实时更新相关连线
+                        Object.keys(linkElements).forEach(linkKey => {
+                            const linkData = linkElements[linkKey];
+                            if (linkData.sourceNode.id === d.id || linkData.targetNode.id === d.id) {
+                                updateLinkPosition(linkKey, linkData);
+                            }
+                        });
+                    })
+                    .on('end', function(event, d) {
+                        d3.select(this).classed('dragging', false);
+                        dragSubject = null;
+                    });
+                
+                nodeGroupElement.call(drag);
+                
+                // 表格背景
+                nodeGroupElement.append('rect')
+                    .attr('class', 'table-rect')
+                    .attr('width', node.width)
+                    .attr('height', node.height);
+                
+                // 表头
+                nodeGroupElement.append('rect')
+                    .attr('class', 'table-header')
+                    .attr('width', node.width)
+                    .attr('height', node.headerHeight);
+                
+                // 表名
+                nodeGroupElement.append('text')
+                    .attr('class', 'table-name')
+                    .attr('x', node.width / 2)
+                    .attr('y', node.headerHeight / 2)
+                    .text(node.name);
+                
+                // 字段行
+                if (node.columns && node.columns.length > 0) {
+                    node.columns.forEach((column, i) => {
+                        const yPos = node.headerHeight + i * node.rowHeight;
+                        
+                        // 字段背景
+                        nodeGroupElement.append('rect')
+                            .attr('class', 'column-row')
+                            .attr('x', 0)
+                            .attr('y', yPos)
+                            .attr('width', node.width)
+                            .attr('height', node.rowHeight);
+                        
+                        // 字段名
+                        nodeGroupElement.append('text')
+                            .attr('class', 'column-name')
+                            .attr('x', 10)
+                            .attr('y', yPos + node.rowHeight / 2)
+                            .text(column);
+                    });
+                }
+            });
+        }
+
+        // 隐藏无数据提示
+        function hideNoDataText() {
+            noDataText.style.display = 'none';
+        }
+
+        // 显示加载状态
+        function showLoading() {
+            loadingOverlay.style.display = 'flex';
+            parseBtn.disabled = true;
+        }
+
+        // 隐藏加载状态
+        function hideLoading() {
+            loadingOverlay.style.display = 'none';
+            parseBtn.disabled = false;
+        }
+
+        // 显示错误信息
+        function showError(message) {
+            errorMsg.innerHTML = `<i class="mdi mdi-alert-circle"></i> ${message}`;
+            errorMsg.style.display = 'block';
+        }
+
+        // 隐藏错误信息
+        function hideError() {
+            errorMsg.style.display = 'none';
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

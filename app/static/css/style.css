@@ -1,0 +1,139 @@
+/* static/css/style.css */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f5f7fa;
+    color: #333;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: white;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+    color: #2c3e50;
+    border-bottom: 2px solid #3498db;
+    padding-bottom: 10px;
+    margin-top: 0;
+}
+
+.sql-editor {
+    margin-bottom: 25px;
+}
+
+#sql-input {
+    width: 100%;
+    height: 150px;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-family: 'Consolas', monospace;
+    font-size: 14px;
+    resize: vertical;
+    background-color: #f8f9fa;
+}
+
+#parse-btn {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    margin-top: 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+}
+
+#parse-btn:hover {
+    background-color: #2980b9;
+}
+
+.result-container {
+    display: flex;
+    gap: 30px;
+    margin-top: 20px;
+}
+
+.result-panel {
+    flex: 1;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.visualization-panel {
+    flex: 2;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 15px;
+    background-color: #f8f9fa;
+}
+
+.result-panel h2 {
+    margin-top: 0;
+    color: #2c3e50;
+    font-size: 18px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 8px;
+}
+
+.result-list {
+    list-style-type: none;
+    padding-left: 0;
+}
+
+.result-list li {
+    padding: 8px 12px;
+    margin-bottom: 5px;
+    background-color: white;
+    border-radius: 3px;
+    border-left: 3px solid #3498db;
+}
+
+#lineage-graph {
+    width: 100%;
+    height: 600px;
+    border: 1px solid #eee;
+    background-color: white;
+}
+
+.node-table { fill: #ff7f0e; stroke: #c75600; }
+.node-column { fill: #1f77b4; stroke: #0d5a8a; }
+.link-join { stroke: #ff0000; stroke-width: 2px; }
+.link-contains { stroke: #cccccc; stroke-dasharray: 5,5; }
+.node text { font-size: 12px; pointer-events: none; }
+.link text { font-size: 10px; fill: #666; }
+
+#loading {
+    display: none;
+    margin-top: 10px;
+    color: #7f8c8d;
+}
+
+.error-message {
+    color: #e74c3c;
+    padding: 10px;
+    background-color: #fadbd8;
+    border-radius: 4px;
+    margin-top: 15px;
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .result-container {
+        flex-direction: column;
+    }
+    #lineage-graph {
+        height: 400px;
+    }
+}
